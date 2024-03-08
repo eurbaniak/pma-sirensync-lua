@@ -28,3 +28,32 @@ function debugPrint(...)
   local finalMsg = msgTemplate:format(currentResourceName, appendStr)
   print(finalMsg)
 end
+
+function Delay(ms)
+  local done = false
+  Citizen.CreateThread(function()
+    Citizen.Wait(ms)
+    done = true
+  end)
+  repeat Citizen.Wait(0) until done
+end
+
+local playerId = PlayerId()
+
+function stateBagWrapper(bagKey, handler)
+  local handle = AddStateBagChangeHandler(bagKey, function(bagName, _key, value, _, replicated)
+    local entNet = tonumber(string.gsub(bagName, "entity:", ""))
+    local timeout = GetGameTimer() + 1500
+
+    while not NetworkDoesEntityExistWithNetworkId(entNet) do
+      Delay(0)
+      if timeout < GetGameTimer() then return end
+    end
+
+    local veh = NetToVeh(entNet)
+    local amOwner = NetworkGetEntityOwner(veh) == playerId
+    if (not amOwner and replicated) or (amOwner and not replicated) then return end
+    handler(veh, value)
+  end)
+  return handle
+end

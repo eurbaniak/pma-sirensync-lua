@@ -1,5 +1,11 @@
 {
     "Lua.diagnostics.disable": [
-        "missing-parameter"
+        "missing-parameter",
+        "param-type-mismatch",
+        "unused-local"
+    ],
+    "Lua.diagnostics.globals": [
+        "stateBagWrapper",
+        "debugLog"
     ]
 }
