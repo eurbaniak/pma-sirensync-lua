@@ -1,28 +1,9 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { debugData } from "../utils/debugData";
-import { fetchNui } from "../utils/fetchNui";
+import React, { useCallback, useState } from "react";
 import { useNuiEvent } from "../hooks/useNuiEvent";
 import { clsx } from "clsx";
 
-debugData([
-  {
-    action: "setVisible",
-    data: true,
-  },
-]);
-
-debugData([
-  {
-    action: "updateEnabledState",
-    data: {
-      element: "yelp",
-      enabled: true,
-    },
-  },
-]);
-
 const initialEnabledState = {
-  code1: false,
+  code1: true,
   code2: false,
   code3: false,
   wail: false,
@@ -50,7 +31,7 @@ interface Props {
 const ItemDiv = ({ enabled, classes, children }: Props) => (
   <div
     className={clsx(`p-4 text-center rounded-md ${classes}`, {
-      "bg-gray-500/50": !enabled,
+      "bg-gray-900/50": !enabled,
       "bg-teal-600/70": enabled,
     })}
     style={{
@@ -66,11 +47,14 @@ const ItemDiv = ({ enabled, classes, children }: Props) => (
 const App: React.FC = () => {
   const [enabled, setEnabled] = useState<EnabledState>(initialEnabledState);
 
-  const updateEnabledState = useCallback((data: EventData) => {
-    setEnabled((prevEnabled) => ({
-      ...prevEnabled,
-      [data.element]: data.enabled,
-    }));
+  const updateEnabledState = useCallback((...dataList: EventData[]) => {
+    setEnabled((prevEnabled) => {
+      const updatedEnabled = { ...prevEnabled };
+      dataList.forEach((data) => {
+        updatedEnabled[data.element] = data.enabled;
+      });
+      return updatedEnabled;
+    });
   }, []);
 
   useNuiEvent<EventData>("updateEnabledState", updateEnabledState);

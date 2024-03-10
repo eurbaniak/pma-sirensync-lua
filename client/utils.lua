@@ -29,24 +29,20 @@ function debugPrint(...)
   print(finalMsg)
 end
 
-function Delay(ms)
-  local done = false
-  Citizen.CreateThread(function()
-    Citizen.Wait(ms)
-    done = true
-  end)
-  repeat Citizen.Wait(0) until done
-end
-
 local playerId = PlayerId()
 
+function debugLog(msg)
+  if not Debug then return end
+  print(msg)
+end
+
 function stateBagWrapper(bagKey, handler)
-  local handle = AddStateBagChangeHandler(bagKey, function(bagName, _key, value, _, replicated)
-    local entNet = tonumber(string.gsub(bagName, "entity:", ""))
+  local handle = AddStateBagChangeHandler(bagKey, null, function(bagName, _key, value, _, replicated)
+    local entNet = tonumber(string.match(bagName, "entity:(%d+)"))
     local timeout = GetGameTimer() + 1500
 
     while not NetworkDoesEntityExistWithNetworkId(entNet) do
-      Delay(0)
+      Wait(0)
       if timeout < GetGameTimer() then return end
     end
 

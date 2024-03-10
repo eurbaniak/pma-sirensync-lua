@@ -1,21 +1,3 @@
-local isNuiVisible = false
-
-local function toggleNuiFrame()
-  isNuiVisible = not isNuiVisible
-  SendReactMessage('setVisible', isNuiVisible)
-end
-
-RegisterCommand('+toggleNui', toggleNuiFrame)
-RegisterNUICallback('hideFrame', function(_, cb)
-  toggleNuiFrame()
-  cb({})
-end)
-
-RegisterKeyMapping('+toggleNui', 'Toggle NUI frame', 'keyboard', '/')
-
---
-
-local sirenSync <const> = exports['pma-sirensync']
 local Wait <const> = Wait
 local PlayerPedId <const> = PlayerPedId
 local GetVehiclePedIsIn <const> = GetVehiclePedIsIn
@@ -27,7 +9,11 @@ local GetPedInVehicleSeat <const> = GetPedInVehicleSeat
 local GetVehicleClass <const> = GetVehicleClass
 local IsPedInAnyHeli <const> = IsPedInAnyHeli
 local IsPedInAnyPlane <const> = IsPedInAnyPlane
-local debug
+local debug = {}
+local curSirenSound = {}
+local curSiren2Sound = {}
+local curHornSound = {}
+local code3 = false
 
 local function isAllowedSirens(veh, ped)
   return GetPedInVehicleSeat(veh, -1) == ped and GetVehicleClass(veh) == 18 and not IsPedInAnyHeli(ped) and
@@ -35,26 +21,21 @@ local function isAllowedSirens(veh, ped)
 end
 
 CreateThread(function()
-  debug = sirenSync.getDebug()
-  local audioBanks = sirenSync.getAddonAudioBanks()
+  local audioBanks = AddonAudioBanks
   for _, v in pairs(audioBanks) do
     RequestScriptAudioBank(v.bankName, false)
   end
   while true do
-    local curSirenSound = sirenSync.getCurSirenSound()
-    local curSiren2Sound = sirenSync.getCurSiren2Sound()
-    local curHornSound = sirenSync.getCurHornSound()
-
     for veh, soundId in pairs(curSirenSound) do
-      sirenSync.releaseSirenSound(veh, soundId, true)
+      releaseSirenSound(veh, soundId, true)
     end
 
     for veh, soundId in pairs(curSiren2Sound) do
-      sirenSync.releaseSiren2Sound(veh, soundId, true)
+      releaseSiren2Sound(veh, soundId, true)
     end
 
     for veh, soundId in pairs(curHornSound) do
-      sirenSync.releaseHornSound(veh, soundId, true)
+      releaseHornSound(veh, soundId, true)
     end
 
     Wait(1000)
@@ -75,6 +56,12 @@ CreateThread(function()
     ped = PlayerPedId()
     curVeh = GetVehiclePedIsIn(ped, false)
     allowedSirens = isAllowedSirens(curVeh, ped)
+
+    if (allowedSirens) then
+      SendReactMessage('setVisible', true)
+    else
+      SendReactMessage('setVisible', false)
+    end
 
     if curVeh ~= lastVeh then
       if curVeh ~= 0 then
@@ -194,6 +181,12 @@ local function releaseHornSound(veh, soundId, isCleanup)
   curHornSound[veh] = nil
 end
 
+local function sendUpdateEnabledState(elements)
+  for _, element in ipairs(elements) do
+    SendReactMessage("updateEnabledState", element)
+  end
+end
+
 local restoreSiren = 0
 
 RegisterCommand("+sirenModeHold", function()
@@ -205,8 +198,8 @@ RegisterCommand("+sirenModeHold", function()
   local ent = Entity(veh).state
 
   if (ent.sirenOn or ent.siren2On) and ent.lightsOn then return end
-
   ent:set("sirenMode", 1, true)
+  SendReactMessage("updateEnabledState", { element = "manual", enabled = true })
 end, false)
 
 RegisterCommand("-sirenModeHold", function()
@@ -216,8 +209,14 @@ RegisterCommand("-sirenModeHold", function()
   if not isAllowedSirens(veh, ped) then return end
 
   local ent = Entity(veh).state
-
   ent:set("sirenMode", 0, true)
+  sendUpdateEnabledState({
+    { element = "manual", enabled = false },
+    { element = "code3",  enabled = false },
+    { element = "code2",  enabled = ent.lightsOn },
+    { element = "wail",   enabled = false },
+    { element = "yelp",   enabled = false }
+  })
 end, false)
 
 RegisterKeyMapping("+sirenModeHold", "Hold this button to sound your emergency vehicle's siren", "keyboard", "R")
@@ -242,6 +241,19 @@ RegisterCommand("sirenSoundCycle", function()
 
   ent:set("sirenOn", true, true)
   ent:set("sirenMode", newSirenMode, true)
+
+  local anySirenPlaying = ent.sirenOn
+
+  sendUpdateEnabledState({
+    { element = "wail",  enabled = anySirenPlaying and newSirenMode == 1 },
+    { element = "yelp",  enabled = anySirenPlaying and newSirenMode == 2 },
+    { element = "hilo",  enabled = anySirenPlaying and newSirenMode == 3 },
+    { element = "code2", enabled = not anySirenPlaying and ent.lightsOn }
+  })
+
+  if anySirenPlaying and ent.lightsOn then
+    SendReactMessage("updateEnabledState", { element = "code3", enabled = true })
+  end
 end, false)
 
 RegisterKeyMapping("sirenSoundCycle",
@@ -259,6 +271,15 @@ RegisterCommand("sirenSoundOff", function()
   ent:set("siren2On", false, true)
   ent:set("sirenMode", 0, true)
   ent:set("siren2Mode", 0, true)
+
+  sendUpdateEnabledState({
+    { element = "aux",   enabled = false },
+    { element = "code3", enabled = false },
+    { element = "code2", enabled = true },
+    { element = "wail",  enabled = false },
+    { element = "yelp",  enabled = false },
+    { element = "hilo",  enabled = false }
+  })
 end, false)
 
 RegisterKeyMapping("sirenSoundOff", "Turn off your sirens after being toggled", "keyboard", "PERIOD")
@@ -274,6 +295,7 @@ RegisterCommand("+hornHold", function()
   if ent.horn then return end
 
   ent:set("horn", true, true)
+  SendReactMessage("updateEnabledState", { element = "horn", enabled = true })
   restoreSiren = ent.sirenMode
   ent:set("sirenMode", 0, true)
 end, false)
@@ -289,6 +311,7 @@ RegisterCommand("-hornHold", function()
   if not ent.horn then return end
 
   ent:set("horn", false, true)
+  SendReactMessage("updateEnabledState", { element = "horn", enabled = false })
   ent:set("sirenMode", ent.lightsOn and restoreSiren or 0, true)
   restoreSiren = 0
 end, false)
@@ -315,7 +338,7 @@ RegisterCommand("sirenSound2Cycle", function()
   end
 
   PlaySoundFrontend(-1, "NAV_UP_DOWN", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
-
+  SendReactMessage("updateEnabledState", { element = "aux", enabled = true })
   ent:set("siren2On", true, true)
   ent:set("siren2Mode", newSirenMode, true)
 end, false)
@@ -334,6 +357,17 @@ RegisterCommand("sirenLightsToggle", function()
 
   PlaySoundFrontend(-1, "NAV_UP_DOWN", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
   local curMode = ent.lightsOn
+  local sirenOn = ent.sirenOn
+
+  sendUpdateEnabledState({
+    { element = "code2", enabled = not curMode and not sirenOn },
+    { element = "code3", enabled = false },
+    { element = "code1", enabled = curMode },
+    { element = "wail",  enabled = false },
+    { element = "yelp",  enabled = false },
+    { element = "hilo",  enabled = false }
+  })
+
   ent:set("lightsOn", not curMode, true)
 
   if not curMode then return end
@@ -347,10 +381,12 @@ RegisterKeyMapping("sirenLightsToggle", "Toggle your emergency vehicle's siren l
 
 stateBagWrapper("horn", function(ent, value)
   local relHornId = curHornSound[ent]
+
   if relHornId then
     releaseHornSound(ent, relHornId)
     debugLog("[horn] " .. ent .. " has sound, releasing sound id " .. relHornId)
   end
+
   if not value then return end
   local soundId = GetSoundId()
   debugLog("[horn] Setting sound id " .. soundId .. " for " .. ent)

@@ -15,11 +15,6 @@ function joaat(key)
     return hash & 0xFFFFFFFF
 end
 
-function debugLog(msg)
-    if not Debug then return end
-    print(msg)
-end
-
 HornOverride = {}
 HornOverride[joaat("firetruk")] = "VEHICLES_HORNS_FIRETRUCK_WARNING"
 
